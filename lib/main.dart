@@ -1,121 +1,270 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'database/db.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() => runApp(const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: TareasPage(),
+    ));
+
+class TareasPage extends StatefulWidget {
+  const TareasPage({super.key});
+
+  @override
+  State<TareasPage> createState() => _TareasPageState();
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class _TareasPageState extends State<TareasPage> {
+  final tituloCtrl = TextEditingController();
+  final contenidoCtrl = TextEditingController();
+  List<Map<String, dynamic>> tareas = [];
+  int? editandoId;
+  String nombreUsuario = '';
+  bool soloPendientes = false;
 
-  // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+  void initState() {
+    super.initState();
+    cargarNombre();
+    cargarTareas();
+  }
+
+  // ========== SHARED PREFERENCES ==========
+  Future<void> cargarNombre() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      nombreUsuario = prefs.getString('nombre_usuario') ?? '';
+      soloPendientes = prefs.getBool('solo_pendientes') ?? false;
+    });
+    if (nombreUsuario.isEmpty) {
+      _mostrarDialogoNombre();
+    }
+  }
+
+  Future<void> guardarNombre(String nombre) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('nombre_usuario', nombre);
+    setState(() => nombreUsuario = nombre);
+  }
+
+  Future<void> guardarFiltro(bool valor) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('solo_pendientes', valor);
+    setState(() => soloPendientes = valor);
+  }
+
+  void _mostrarDialogoNombre() {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('¡Bienvenido!'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            labelText: '¿Cómo te llamas?',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) {
+                guardarNombre(ctrl.text.trim());
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
     );
   }
-}
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  // ========== SQLITE CRUD ==========
+  Future<void> cargarTareas() async {
+    final data = await DB.listar();
+    setState(() => tareas = data);
+  }
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
+  Future<void> guardar() async {
+    final titulo = tituloCtrl.text.trim();
+    final contenido = contenidoCtrl.text.trim();
 
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
+    if (titulo.isEmpty || contenido.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⚠️ Completa todos los campos')),
+      );
+      return;
+    }
 
-  final String title;
+    if (editandoId == null) {
+      await DB.insertar(titulo, contenido);
+    } else {
+      await DB.actualizar(editandoId!, titulo, contenido);
+      editandoId = null;
+    }
 
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
+    tituloCtrl.clear();
+    contenidoCtrl.clear();
+    cargarTareas();
+  }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  Future<void> eliminar(int id) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Eliminar tarea'),
+        content: const Text('¿Estás seguro de que deseas eliminar esta tarea?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar == true) {
+      await DB.eliminar(id);
+      cargarTareas();
+    }
+  }
 
-  void _incrementCounter() {
+  Future<void> toggleCompletada(int id, bool completada) async {
+    await DB.marcarCompletada(id, completada);
+    cargarTareas();
+  }
+
+  void editar(Map<String, dynamic> tarea) {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      tituloCtrl.text = tarea['titulo'];
+      contenidoCtrl.text = tarea['contenido'];
+      editandoId = tarea['id'];
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    final tareasFiltradas = soloPendientes
+        ? tareas.where((t) => t['completada'] == 0).toList()
+        : tareas;
+
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: Text(nombreUsuario.isEmpty
+            ? 'Gestor de Tareas'
+            : 'Hola, $nombreUsuario'),
+        actions: [
+          IconButton(
+            icon: Icon(soloPendientes
+                ? Icons.filter_alt
+                : Icons.filter_alt_outlined),
+            tooltip: 'Mostrar solo pendientes',
+            onPressed: () => guardarFiltro(!soloPendientes),
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                TextField(
+                  controller: tituloCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Título',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: contenidoCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Contenido',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: guardar,
+                        icon: Icon(editandoId == null ? Icons.add : Icons.save),
+                        label: Text(editandoId == null ? 'Guardar' : 'Actualizar'),
+                      ),
+                    ),
+                    if (editandoId != null) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            editandoId = null;
+                            tituloCtrl.clear();
+                            contenidoCtrl.clear();
+                          });
+                        },
+                        child: const Text('Cancelar'),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+          ),
+          const Divider(),
+          Expanded(
+            child: tareasFiltradas.isEmpty
+                ? const Center(child: Text('No hay tareas registradas'))
+                : ListView.builder(
+                    itemCount: tareasFiltradas.length,
+                    itemBuilder: (_, i) {
+                      final t = tareasFiltradas[i];
+                      final completada = t['completada'] == 1;
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: completada,
+                            onChanged: (v) =>
+                                toggleCompletada(t['id'], v ?? false),
+                          ),
+                          title: Text(
+                            t['titulo'],
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              decoration: completada
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                          subtitle: Text(t['contenido']),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.blue),
+                                onPressed: () => editar(t),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => eliminar(t['id']),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
