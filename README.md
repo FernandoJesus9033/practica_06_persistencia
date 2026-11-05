@@ -1,17 +1,26 @@
-# practica_06_persistencia
+# Práctica 06 - Persistencia Local y Operación Offline
 
-A new Flutter project.
+## 📋 Datos Generales
+- **Institución:** Instituto Tecnológico Superior de Calkiní
+- **Carrera:** Ingeniería en Sistemas Computacionales
+- **Asignatura:** Tópicos de Programación Móvil
+- **Maestra:** Ruth Betsaida Martínez Domínguez
+- **Equipo:** EQ. 6
+- **Semestre:** 7
+- **Grupo:** A
 
-## Getting Started
+## 🎯 Objetivo
+Persistir preferencias simples y registros estructurados en almacenamiento local, implementando operaciones CRUD y una estrategia básica offline.
 
-This project is a starting point for a Flutter application.
+## 🛠️ Requisitos
+- Flutter SDK 3.47.2+
+- Dart 3.13.2+
+- Visual Studio Code
+- Git
+- Paquetes: sqflite, shared_preferences, path
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 📦 Instalación
+```bash
+git clone https://github.com/FernandoJesus9033/practica_06_persistencia.git
+cd practica_06_persistencia
+flutter pub get
